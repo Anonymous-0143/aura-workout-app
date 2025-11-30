@@ -1,0 +1,27 @@
+@import "tailwindcss";
+
+:root {
+    font-family: 'Outfit', sans-serif;
+}
+
+body {
+    @apply bg-slate-50 text-slate-900;
+    background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+    min-height: 100vh;
+}
+
+.glass-card {
+    @apply bg-white/80 backdrop-blur-lg border border-white/20 shadow-xl rounded-2xl;
+}
+
+.gradient-text {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-violet-600;
+}
+
+.btn-primary {
+    @apply bg-gradient-to-r from-blue-600 to-violet-600 text-white font-semibold py-3 px-6 rounded-xl shadow-lg hover:shadow-blue-500/30 transition-all duration-300 transform hover:-translate-y-1;
+}
+
+.input-field {
+    @apply w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all duration-200 bg-white/50 backdrop-blur-sm;
+}
