@@ -30,50 +30,50 @@ const Dashboard = ({ plan, onReset }) => {
 
   return (
     <div className="min-h-screen p-6 pb-20">
-      <div className="max-w-6xl mx-auto">
-        <div className="flex justify-between items-center mb-10">
+      <div className="max-w-7xl mx-auto">
+        <div className="flex flex-col md:flex-row justify-between items-end mb-12 gap-6">
           <div>
-            <h1 className="text-4xl font-bold text-gray-800 mb-2">Your Weekly Plan</h1>
-            <p className="text-gray-600">Goal: <span className="font-semibold text-blue-600">{plan.user_goal}</span></p>
+            <h1 className="text-5xl font-bold text-white mb-3 tracking-tight">Weekly Plan</h1>
+            <p className="text-gray-400 text-lg">Focus: <span className="text-white font-medium">{plan.user_goal}</span></p>
           </div>
           <div className="flex gap-4">
             <button
                 onClick={() => navigate('/vision-coach')}
-                className="flex items-center gap-2 bg-gradient-to-r from-purple-600 to-blue-600 text-white px-6 py-2 rounded-lg shadow-lg hover:shadow-xl hover:scale-105 transition-all transform font-semibold"
+                className="flex items-center gap-2 bg-white text-black px-6 py-3 rounded-xl shadow-[0_0_20px_rgba(255,255,255,0.2)] hover:shadow-[0_0_30px_rgba(255,255,255,0.3)] hover:scale-105 transition-all transform font-bold tracking-wide"
             >
-                <span>👁️</span> Start AI Coach
+                <span>👁️</span> AI COACH
             </button>
             <button
                 onClick={onReset}
-                className="text-sm text-gray-500 hover:text-blue-600 transition-colors bg-white px-4 py-2 rounded-lg shadow-sm border border-gray-100"
+                className="text-sm text-gray-400 hover:text-white transition-colors px-4 py-2"
             >
                 Update Profile
             </button>
           </div>
         </div>
 
-        <div className="glass-card p-8 mb-10 border-l-4 border-blue-500">
-          <h2 className="text-xl font-semibold text-gray-800 mb-2">Coach's Insight</h2>
-          <p className="text-gray-600 italic text-lg">"{plan.advice}"</p>
+        <div className="glass-card p-8 mb-12 border-l-4 border-white/20 bg-white/5">
+          <h2 className="text-xl font-semibold text-white mb-2">Coach's Insight</h2>
+          <p className="text-gray-300 italic text-lg leading-relaxed">"{plan.advice}"</p>
         </div>
 
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        <div className="grid gap-8 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {plan.schedule.map((workout, index) => (
             <div 
                 key={index} 
                 onClick={() => handleCardClick(workout)}
-                className="glass-card overflow-hidden hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 group flex flex-col cursor-pointer"
+                className="glass-card overflow-hidden hover:bg-white/10 transition-all duration-500 group flex flex-col cursor-pointer border border-white/5 hover:border-white/20"
             >
-              <div className="relative h-48 overflow-hidden">
+              <div className="relative h-56 overflow-hidden">
                  {workout.image_url ? (
-                    <img src={workout.image_url} alt={workout.name} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" />
+                    <img src={workout.image_url} alt={workout.name} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110 opacity-80 group-hover:opacity-100" />
                  ) : (
-                    <div className="w-full h-full bg-gradient-to-r from-blue-500 to-violet-500 flex items-center justify-center text-white text-4xl font-bold">
+                    <div className="w-full h-full bg-gradient-to-br from-gray-800 to-black flex items-center justify-center text-white/20 text-6xl font-bold">
                         {workout.day[0]}
                     </div>
                  )}
-                 <div className="absolute top-2 right-2">
-                    <span className="text-xs bg-white/90 text-gray-800 px-2 py-1 rounded-full backdrop-blur-sm font-bold shadow-sm">
+                 <div className="absolute top-4 right-4">
+                    <span className="text-xs bg-black/60 text-white px-3 py-1 rounded-full backdrop-blur-md font-medium border border-white/10">
                         {workout.duration_minutes} min
                     </span>
                  </div>
@@ -82,23 +82,26 @@ const Dashboard = ({ plan, onReset }) => {
               <div className="p-6 flex-grow flex flex-col">
                 <div className="mb-4">
                     <div className="flex justify-between items-start mb-2">
-                        <h3 className="text-xl font-bold text-gray-800 group-hover:text-blue-600 transition-colors">{workout.name}</h3>
-                        <span className="text-sm font-semibold text-gray-500">{workout.day}</span>
+                        <h3 className="text-2xl font-bold text-white group-hover:text-gray-200 transition-colors">{workout.name}</h3>
                     </div>
-                  
-                  <span className={`inline-block px-2 py-0.5 text-xs font-semibold rounded-full ${
-                    workout.difficulty === 'Beginner' ? 'bg-green-100 text-green-700' :
-                    workout.difficulty === 'Intermediate' ? 'bg-yellow-100 text-yellow-700' :
-                    'bg-red-100 text-red-700'
-                  }`}>
-                    {workout.difficulty}
-                  </span>
+                    <div className="flex justify-between items-center">
+                        <span className="text-sm font-medium text-gray-500 uppercase tracking-wider">{workout.day}</span>
+                        <span className={`inline-block px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest rounded-sm ${
+                            workout.difficulty === 'Beginner' ? 'text-green-400 bg-green-400/10' :
+                            workout.difficulty === 'Intermediate' ? 'text-yellow-400 bg-yellow-400/10' :
+                            'text-red-400 bg-red-400/10'
+                        }`}>
+                            {workout.difficulty}
+                        </span>
+                    </div>
                 </div>
-                <p className="text-gray-600 text-sm leading-relaxed mb-6 flex-grow line-clamp-3">{workout.description}</p>
+                <div className="bg-white/60 backdrop-blur-md rounded-xl p-4 border border-white/20 mb-8 flex-grow shadow-sm">
+                    <p className="text-gray-900 text-sm leading-relaxed font-medium line-clamp-3">{workout.description}</p>
+                </div>
                 
                 <button 
                     onClick={(e) => handleComplete(e, workout)}
-                    className="w-full mt-auto bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors shadow-md hover:shadow-lg active:scale-95 transform duration-150"
+                    className="w-full mt-auto bg-white/10 hover:bg-white text-white hover:text-black font-semibold py-3 px-4 rounded-xl transition-all duration-300 border border-white/10 hover:border-transparent"
                 >
                     Complete Workout
                 </button>

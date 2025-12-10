@@ -16,13 +16,36 @@ class RecommenderEngine:
     def __init__(self):
         self.mlb_fitness = MultiLabelBinarizer()
         self.mlb_goal = MultiLabelBinarizer()
-        self.model = NearestNeighbors(n_neighbors=1, metric='hamming')
+        self.model = None # NN Model
+        self.encoders = None
+        self.knn_model = NearestNeighbors(n_neighbors=1, metric='hamming') # Fallback
         self.df_programs = pd.DataFrame()
         
+        # Load Data for Fallback
         if os.path.exists(DB_PATH):
             self._load_data_and_train()
         else:
             print(f"Warning: Database not found at {DB_PATH}")
+
+        # Load Trained NN Model
+        self._load_nn_model()
+
+    def _load_nn_model(self):
+        try:
+            model_path = os.path.join(BASE_DIR, "workout_model.h5")
+            encoder_path = os.path.join(BASE_DIR, "encoders.pkl")
+            
+            if os.path.exists(model_path) and os.path.exists(encoder_path):
+                import tensorflow as tf
+                import pickle
+                self.model = tf.keras.models.load_model(model_path)
+                with open(encoder_path, "rb") as f:
+                    self.encoders = pickle.load(f)
+                print("Trained Neural Network model loaded successfully.")
+            else:
+                print("Trained model not found. Using KNN fallback.")
+        except Exception as e:
+            print(f"Error loading NN model: {e}")
 
     def _load_data_and_train(self):
         try:
@@ -30,27 +53,30 @@ class RecommenderEngine:
             self.df_programs = pd.read_sql("SELECT * FROM programs", conn)
             conn.close()
 
+            # Filter out invalid programs (numeric titles or too short)
+            # Remove rows where title is purely numeric
+            self.df_programs = self.df_programs[~self.df_programs['title'].astype(str).str.match(r'^\d+$')]
+            # Remove rows where title is suspiciously short
+            self.df_programs = self.df_programs[self.df_programs['title'].astype(str).str.len() >= 3]
+
+
             # Parse stringified lists
             self.df_programs['level_list'] = self.df_programs['level'].apply(lambda x: self._safe_eval(x))
             self.df_programs['goal_list'] = self.df_programs['goal'].apply(lambda x: self._safe_eval(x))
 
-            # Create feature matrix
-            # We combine fitness level and goal into a single feature set for matching
-            
-            # Fit binarizers
+            # Create feature matrix for KNN fallback
             all_levels = set([item for sublist in self.df_programs['level_list'] for item in sublist])
             all_goals = set([item for sublist in self.df_programs['goal_list'] for item in sublist])
             
             self.mlb_fitness.fit([list(all_levels)])
             self.mlb_goal.fit([list(all_goals)])
             
-            # Transform data
             X_fitness = self.mlb_fitness.transform(self.df_programs['level_list'])
             X_goal = self.mlb_goal.transform(self.df_programs['goal_list'])
             
             self.X = np.hstack([X_fitness, X_goal])
-            self.model.fit(self.X)
-            print(f"Recommender trained on {len(self.df_programs)} programs.")
+            self.knn_model.fit(self.X)
+            print(f"KNN Recommender trained on {len(self.df_programs)} programs.")
             
         except Exception as e:
             print(f"Error loading data: {e}")
@@ -62,15 +88,53 @@ class RecommenderEngine:
             return []
 
     def predict(self, profile: UserProfile) -> WeeklyPlan:
+        # Try NN Prediction first
+        if self.model and self.encoders:
+            try:
+                print("Using Neural Network for prediction...")
+                # Encode inputs
+                fitness_val = profile.fitness_level.value
+                goal_val = profile.goal.value
+                
+                # Handle potential encoding errors if value not seen during training
+                try:
+                    f_enc = self.encoders['fitness'].transform([fitness_val])[0]
+                    g_enc = self.encoders['goal'].transform([goal_val])[0]
+                except ValueError:
+                    print("Input value not seen in training. Falling back to KNN.")
+                    raise ValueError("Unknown category")
+
+                # Predict
+                prediction = self.model.predict([[f_enc, g_enc]])
+                predicted_class = np.argmax(prediction)
+                predicted_workout_type = self.encoders['target'].inverse_transform([predicted_class])[0]
+                
+                print(f"NN Predicted Workout Type: {predicted_workout_type}")
+                
+                # Find matching program in DB
+                # We assume 'workout_type' maps to 'title' or we search for it
+                # For now, let's try to find a program where title contains this string
+                # or is close to it.
+                
+                # Simple exact match or substring match
+                matches = self.df_programs[self.df_programs['title'].str.contains(predicted_workout_type, case=False, regex=False)]
+                
+                if not matches.empty:
+                    program = matches.iloc[0]
+                    return self._generate_plan_from_program(program, profile)
+                else:
+                    print(f"No program found for type '{predicted_workout_type}'. Falling back.")
+                    
+            except Exception as e:
+                print(f"NN Prediction failed: {e}")
+                # Fall through to KNN
+
+        # Fallback to KNN
         if self.df_programs.empty:
             return self._generate_fallback_plan(profile)
 
         try:
-            # Transform user profile to feature vector
-            # Map user profile enums to potential matches in the dataset
-            # Note: Dataset uses strings like 'Intermediate', 'Muscle & Sculpting'
-            
-            # Simple mapping (can be expanded)
+            print("Using KNN Fallback...")
             level_map = {
                 FitnessLevel.BEGINNER: ['Beginner', 'Novice'],
                 FitnessLevel.INTERMEDIATE: ['Intermediate'],
@@ -81,22 +145,12 @@ class RecommenderEngine:
                 Goal.WEIGHT_LOSS: ['Fat Loss', 'Cardio', 'Athletics'],
                 Goal.MUSCLE_GAIN: ['Bodybuilding', 'Muscle & Sculpting', 'Powerbuilding', 'Hypertrophy'],
                 Goal.ENDURANCE: ['Athletics', 'Cardio'],
-                Goal.FLEXIBILITY: ['Yoga', 'Mobility'] # Assuming these might exist or map to something
+                Goal.FLEXIBILITY: ['Yoga', 'Mobility']
             }
 
             user_levels = level_map.get(profile.fitness_level, [])
             user_goals = goal_map.get(profile.goal, [])
             
-            # We create a query vector. Since we don't know exactly which term matches, 
-            # we can try to find the best match. 
-            # For simplicity, we'll just use the first mapped term if available, or try to match all.
-            # Actually, NearestNeighbors with hamming distance works well with multi-hot vectors.
-            # We set 1 for ANY of the mapped terms.
-            
-            # Create dummy input for transformation
-            # We need to pass a list of lists (samples)
-            
-            # Filter valid classes
             valid_levels = [l for l in user_levels if l in self.mlb_fitness.classes_]
             valid_goals = [g for g in user_goals if g in self.mlb_goal.classes_]
             
@@ -108,8 +162,7 @@ class RecommenderEngine:
             
             query_vec = np.hstack([u_fitness, u_goal])
             
-            # Find nearest neighbor
-            distances, indices = self.model.kneighbors(query_vec)
+            distances, indices = self.knn_model.kneighbors(query_vec)
             best_idx = indices[0][0]
             program = self.df_programs.iloc[best_idx]
             
@@ -131,18 +184,22 @@ class RecommenderEngine:
         conn.close()
         
         # Exercise image mapping (placeholders/public GIFs)
+        # Exercise image mapping (Static Gym Photos)
+        # Using a sleek gym aesthetic photo for all exercises as requested
+        GYM_PHOTO_URL = "https://images.unsplash.com/photo-1534438327276-14e5300c3a48?auto=format&fit=crop&w=1200&q=80"
+        
         EXERCISE_IMAGES = {
-            "squat": "https://media.giphy.com/media/1yMvhR4M47Okw4n8tt/giphy.gif",
-            "pushup": "https://media.giphy.com/media/KDDVCmRkE6wvV8ZCIk/giphy.gif",
-            "push up": "https://media.giphy.com/media/KDDVCmRkE6wvV8ZCIk/giphy.gif",
-            "bench press": "https://media.giphy.com/media/3o7Tjq18X05XyX3Z28/giphy.gif",
-            "row": "https://media.giphy.com/media/3o7Tjq18X05XyX3Z28/giphy.gif", # Placeholder
-            "lunge": "https://media.giphy.com/media/l3vRb68G5Q85aJ8wE/giphy.gif", # Placeholder
-            "deadlift": "https://media.giphy.com/media/3o7Tjq18X05XyX3Z28/giphy.gif", # Placeholder
-            "pullup": "https://media.giphy.com/media/3o7Tjq18X05XyX3Z28/giphy.gif", # Placeholder
-            "pull up": "https://media.giphy.com/media/3o7Tjq18X05XyX3Z28/giphy.gif", # Placeholder
-            "curl": "https://media.giphy.com/media/3o7Tjq18X05XyX3Z28/giphy.gif", # Placeholder
-            "press": "https://media.giphy.com/media/3o7Tjq18X05XyX3Z28/giphy.gif", # Placeholder
+            "squat": GYM_PHOTO_URL,
+            "pushup": GYM_PHOTO_URL,
+            "push up": GYM_PHOTO_URL,
+            "bench press": GYM_PHOTO_URL,
+            "row": GYM_PHOTO_URL,
+            "lunge": GYM_PHOTO_URL,
+            "deadlift": GYM_PHOTO_URL,
+            "pullup": GYM_PHOTO_URL,
+            "pull up": GYM_PHOTO_URL,
+            "curl": GYM_PHOTO_URL,
+            "press": GYM_PHOTO_URL,
         }
 
         def get_exercise_image(name):
@@ -150,7 +207,7 @@ class RecommenderEngine:
             for key, url in EXERCISE_IMAGES.items():
                 if key in name_lower:
                     return url
-            return "https://images.unsplash.com/photo-1517836357463-d25dfeac3438?auto=format&fit=crop&w=800&q=80" # Default
+            return "https://images.unsplash.com/photo-1534438327276-14e5300c3a48?auto=format&fit=crop&w=1200&q=80" # Default
 
         schedule = []
         if not df_details.empty:

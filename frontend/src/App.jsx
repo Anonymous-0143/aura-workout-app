@@ -39,25 +39,25 @@ const Home = () => {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-gray-100">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+      <div className="flex items-center justify-center min-h-screen bg-black">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-white"></div>
       </div>
     );
   }
 
   return (
-    <div className="App">
-       {/* Simple Navbar for demo */}
-       <nav className="p-4 flex justify-between items-center bg-white/50 backdrop-blur-md sticky top-0 z-50">
-          <div className="font-bold text-xl gradient-text">FitAI</div>
-          <div className="space-x-4">
-              <a href="/" className="text-gray-600 hover:text-blue-600">Dashboard</a>
-              <a href="/progress" className="text-gray-600 hover:text-blue-600">Progress</a>
+    <div className="min-h-screen text-white">
+       {/* Navbar */}
+       <nav className="p-6 flex justify-between items-center sticky top-0 z-50 bg-black/50 backdrop-blur-xl border-b border-white/10">
+          <div className="font-bold text-2xl tracking-wider" style={{ fontFamily: 'Outfit, sans-serif' }}>AURA</div>
+          <div className="space-x-8">
+              <a href="/" className="text-gray-400 hover:text-white transition-colors text-sm uppercase tracking-widest">Dashboard</a>
+              <a href="/progress" className="text-gray-400 hover:text-white transition-colors text-sm uppercase tracking-widest">Progress</a>
           </div>
        </nav>
 
       {error && (
-        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative text-center" role="alert">
+        <div className="bg-red-900/50 border border-red-500/50 text-red-200 px-4 py-3 rounded relative text-center mx-4 mt-4" role="alert">
           <span className="block sm:inline">{error}</span>
         </div>
       )}

@@ -1,129 +1,37 @@
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useRef, useEffect, useState, useCallback } from 'react';
 import Webcam from 'react-webcam';
 import { Pose, POSE_CONNECTIONS } from '@mediapipe/pose';
 import { Camera } from '@mediapipe/camera_utils';
 import { drawConnectors, drawLandmarks } from '@mediapipe/drawing_utils';
-import { ArrowLeft, RefreshCw, Play, Pause, ChevronDown } from 'lucide-react';
+import { ArrowLeft, RefreshCw, Play, Pause } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-
-const EXERCISE_CONFIG = {
-  squat: {
-    name: "Squats",
-    landmarks: [23, 25, 27], // Hip, Knee, Ankle
-    upAngle: 160,
-    downAngle: 90,
-    feedback: { 
-        start: "Stand in frame",
-        up: "Go down...", 
-        down: "Good depth! Up.",
-        correction: "Too low! Careful."
-    },
-    correctionThreshold: 70
-  },
-  pushup: {
-    name: "Pushups",
-    landmarks: [11, 13, 15], // Shoulder, Elbow, Wrist
-    upAngle: 160,
-    downAngle: 90,
-    feedback: { 
-        start: "Get into plank position",
-        up: "Lower chest...", 
-        down: "Push up!",
-        correction: "Keep back straight!"
-    },
-    correctionThreshold: 60
-  },
-  curl: {
-    name: "Bicep Curls",
-    landmarks: [11, 13, 15], // Shoulder, Elbow, Wrist
-    upAngle: 160,
-    downAngle: 45,
-    feedback: { 
-        start: "Hold weights, stand straight",
-        up: "Curl up...", 
-        down: "Extend arm fully.",
-        correction: "Full range of motion!"
-    },
-    correctionThreshold: 30
-  }
-};
+import { PoseLogic, EXERCISE_CONFIG } from '../utils/poseLogic';
 
 const AuraVision = () => {
   const webcamRef = useRef(null);
   const canvasRef = useRef(null);
   const navigate = useNavigate();
+  
+  // Logic State
+  const poseLogic = useRef(new PoseLogic());
+  const cameraRef = useRef(null);
+  const poseRef = useRef(null);
+
+  // UI State
   const [isActive, setIsActive] = useState(false);
   const [reps, setReps] = useState(0);
   const [selectedExercise, setSelectedExercise] = useState('squat');
-  const [feedback, setFeedback] = useState(EXERCISE_CONFIG['squat'].feedback.start);
-  const [stage, setStage] = useState("UP"); 
-  const [cameraLoaded, setCameraLoaded] = useState(false);
+  const [feedback, setFeedback] = useState("Stand in frame");
+  const [isLoaded, setIsLoaded] = useState(false);
+  
+  // Refs for loop
+  const isActiveRef = useRef(false);
+  
+  useEffect(() => {
+    isActiveRef.current = isActive;
+  }, [isActive]);
 
-  // Calculate angle between three points
-  const calculateAngle = (a, b, c) => {
-    const radians = Math.atan2(c.y - b.y, c.x - b.x) - Math.atan2(a.y - b.y, a.x - b.x);
-    let angle = Math.abs(radians * 180.0 / Math.PI);
-    if (angle > 180.0) angle = 360 - angle;
-    return angle;
-  };
-
-  const onResults = (results) => {
-    if (!canvasRef.current || !webcamRef.current?.video) return;
-
-    const videoWidth = webcamRef.current.video.videoWidth;
-    const videoHeight = webcamRef.current.video.videoHeight;
-
-    canvasRef.current.width = videoWidth;
-    canvasRef.current.height = videoHeight;
-
-    const canvasCtx = canvasRef.current.getContext('2d');
-    canvasCtx.save();
-    canvasCtx.clearRect(0, 0, videoWidth, videoHeight);
-
-    if (results.poseLandmarks) {
-      drawConnectors(canvasCtx, results.poseLandmarks, POSE_CONNECTIONS,
-                     { color: '#00FF00', lineWidth: 4 });
-      drawLandmarks(canvasCtx, results.poseLandmarks,
-                    { color: '#FF0000', lineWidth: 2 });
-
-      const landmarks = results.poseLandmarks;
-      const config = EXERCISE_CONFIG[selectedExercise];
-      
-      // Get landmarks based on config
-      const p1 = landmarks[config.landmarks[0]];
-      const p2 = landmarks[config.landmarks[1]];
-      const p3 = landmarks[config.landmarks[2]];
-
-      if (p1 && p2 && p3) {
-        const angle = calculateAngle(p1, p2, p3);
-        
-        // Visual feedback for angle
-        canvasCtx.font = "30px Arial";
-        canvasCtx.fillStyle = "white";
-        canvasCtx.fillText(Math.round(angle).toString(), p2.x * videoWidth, p2.y * videoHeight);
-
-        // Rep Counting Logic
-        if (angle > config.upAngle) {
-          setStage("UP");
-          setFeedback(config.feedback.up);
-        }
-        if (angle < config.downAngle && stage === "UP") {
-          setStage("DOWN");
-          setFeedback(config.feedback.down);
-          setReps(prev => prev + 1);
-        }
-        
-        // Form Correction
-        if (angle < config.correctionThreshold) {
-             setFeedback(config.feedback.correction);
-        }
-      }
-    } else {
-        setFeedback("Body not detected");
-    }
-    canvasCtx.restore();
-  };
-
+  // Initialize MediaPipe Pose
   useEffect(() => {
     const pose = new Pose({locateFile: (file) => {
       return `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`;
@@ -139,55 +47,94 @@ const AuraVision = () => {
     });
 
     pose.onResults(onResults);
+    poseRef.current = pose;
 
-    let camera = null;
-    if (typeof webcamRef.current !== "undefined" && webcamRef.current !== null) {
-      camera = new Camera(webcamRef.current.video, {
-        onFrame: async () => {
-          if (isActive && webcamRef.current?.video) {
-             await pose.send({image: webcamRef.current.video});
-          }
-        },
-        width: 640,
-        height: 480
-      });
-      camera.start();
-      setCameraLoaded(true);
+    // Initialize Camera
+    if (webcamRef.current && webcamRef.current.video) {
+        const camera = new Camera(webcamRef.current.video, {
+            onFrame: async () => {
+                if (isActiveRef.current && poseRef.current) {
+                    await poseRef.current.send({image: webcamRef.current.video});
+                }
+            },
+            width: 640,
+            height: 480
+        });
+        cameraRef.current = camera;
+        camera.start();
+        setIsLoaded(true);
     }
 
     return () => {
-        if (camera) {
-            camera.stop();
-        }
-        if (webcamRef.current && webcamRef.current.video && webcamRef.current.video.srcObject) {
-            const tracks = webcamRef.current.video.srcObject.getTracks();
-            tracks.forEach(track => track.stop());
-        }
+        if (cameraRef.current) cameraRef.current.stop();
+        if (poseRef.current) poseRef.current.close();
     };
-  }, [isActive, selectedExercise]); // Re-run when exercise changes to update callback closure if needed, though mostly for isActive
+  }, []);
+
+  // Handle Exercise Change
+  useEffect(() => {
+    const newState = poseLogic.current.resetState(selectedExercise);
+    setReps(newState.reps);
+    setFeedback(newState.feedback);
+  }, [selectedExercise]);
+
+  const onResults = useCallback((results) => {
+    if (!canvasRef.current || !webcamRef.current || !webcamRef.current.video) return;
+
+    const videoWidth = webcamRef.current.video.videoWidth;
+    const videoHeight = webcamRef.current.video.videoHeight;
+    
+    canvasRef.current.width = videoWidth;
+    canvasRef.current.height = videoHeight;
+    const ctx = canvasRef.current.getContext('2d');
+    
+    ctx.save();
+    ctx.clearRect(0, 0, videoWidth, videoHeight);
+    
+    // Draw Landmarks
+    if (results.poseLandmarks) {
+        drawConnectors(ctx, results.poseLandmarks, POSE_CONNECTIONS, { color: '#FFFFFF', lineWidth: 4 });
+        drawLandmarks(ctx, results.poseLandmarks, { color: '#3B82F6', lineWidth: 2 });
+        
+        // Process Logic
+        const logicState = poseLogic.current.processLandmarks(results.poseLandmarks);
+        if (logicState) {
+            setReps(logicState.reps);
+            setFeedback(logicState.feedback);
+        }
+    }
+    ctx.restore();
+  }, []);
+
+  // Toggle Camera/Processing
+  const toggleSession = () => {
+    setIsActive(!isActive);
+    if (!isActive) {
+        // Reset reps on start
+        const newState = poseLogic.current.resetState(selectedExercise);
+        setReps(newState.reps);
+        setFeedback(newState.feedback);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-black text-white flex flex-col">
       {/* Header */}
-      <div className="p-4 flex items-center justify-between border-b border-gray-800">
-        <button onClick={() => navigate('/')} className="p-2 hover:bg-gray-800 rounded-full">
-            <ArrowLeft className="w-6 h-6" />
+      <div className="p-6 flex items-center justify-between border-b border-white/10 bg-black/50 backdrop-blur-md sticky top-0 z-50">
+        <button onClick={() => navigate('/')} className="p-2 hover:bg-white/10 rounded-full transition-colors">
+            <ArrowLeft className="w-6 h-6 text-white" />
         </button>
         
         {/* Exercise Selector Pills */}
-        <div className="flex gap-2 bg-gray-900/50 p-1 rounded-full border border-gray-800">
+        <div className="flex gap-2 bg-white/5 p-1.5 rounded-full border border-white/10 overflow-x-auto max-w-[70vw] backdrop-blur-sm">
             {Object.keys(EXERCISE_CONFIG).map(key => (
                 <button
                     key={key}
-                    onClick={() => {
-                        setSelectedExercise(key);
-                        setReps(0);
-                        setFeedback(EXERCISE_CONFIG[key].feedback.start);
-                    }}
-                    className={`px-4 py-1.5 rounded-full text-sm font-medium transition-all ${
+                    onClick={() => setSelectedExercise(key)}
+                    className={`px-5 py-2 rounded-full text-sm font-bold transition-all whitespace-nowrap tracking-wide ${
                         selectedExercise === key 
-                        ? 'bg-blue-600 text-white shadow-lg' 
-                        : 'text-gray-400 hover:text-white hover:bg-gray-800'
+                        ? 'bg-white text-black shadow-[0_0_15px_rgba(255,255,255,0.3)]' 
+                        : 'text-gray-400 hover:text-white hover:bg-white/10'
                     }`}
                 >
                     {EXERCISE_CONFIG[key].name}
@@ -199,56 +146,88 @@ const AuraVision = () => {
       </div>
 
       {/* Main Content */}
-      <div className="flex-1 flex flex-col items-center justify-center p-4 relative">
+      <div className="flex-1 flex flex-col items-center justify-center p-6 relative">
         
-        <div className="relative w-full max-w-3xl aspect-video bg-gray-900 rounded-2xl overflow-hidden border border-gray-700 shadow-2xl">
+        <div className="relative w-full max-w-4xl aspect-video bg-black/50 rounded-3xl overflow-hidden border border-white/10 shadow-2xl ring-1 ring-white/5">
             <Webcam
                 ref={webcamRef}
-                className="absolute top-0 left-0 w-full h-full object-cover"
+                className="absolute top-0 left-0 w-full h-full object-cover opacity-80"
                 mirrored={true}
+                width={640}
+                height={480}
+                onUserMedia={() => {
+                    // Re-initialize camera if needed or just set loaded
+                    if (!cameraRef.current && webcamRef.current && webcamRef.current.video) {
+                         const camera = new Camera(webcamRef.current.video, {
+                            onFrame: async () => {
+                                if (isActiveRef.current && poseRef.current) {
+                                    await poseRef.current.send({image: webcamRef.current.video});
+                                }
+                            },
+                            width: 640,
+                            height: 480
+                        });
+                        cameraRef.current = camera;
+                        camera.start();
+                        setIsLoaded(true);
+                    }
+                }}
             />
             <canvas
                 ref={canvasRef}
                 className="absolute top-0 left-0 w-full h-full object-cover"
+                style={{ transform: "scaleX(-1)" }}
             />
             
             {/* Overlay UI */}
-            <div className="absolute top-4 left-4 bg-black/50 backdrop-blur-md p-3 rounded-xl border border-white/10">
-                <p className="text-sm text-gray-300">Reps</p>
-                <p className="text-3xl font-bold text-blue-400">{reps}</p>
+            <div className="absolute top-6 left-6 bg-black/40 backdrop-blur-xl p-4 rounded-2xl border border-white/10 shadow-lg">
+                <p className="text-xs text-gray-400 uppercase tracking-widest font-bold mb-1">Reps</p>
+                <p className="text-5xl font-bold text-white tabular-nums">{reps}</p>
             </div>
 
-             <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 bg-black/70 backdrop-blur-md px-6 py-3 rounded-full border border-white/10 whitespace-nowrap">
-                <p className="text-lg font-medium text-white">{feedback}</p>
+             <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2 bg-black/60 backdrop-blur-xl px-8 py-4 rounded-full border border-white/10 whitespace-nowrap shadow-xl">
+                <p className="text-xl font-medium text-white tracking-wide">{feedback}</p>
             </div>
+            
+            {!isLoaded && (
+                <div className="absolute inset-0 flex items-center justify-center bg-black/90 z-50 backdrop-blur-sm">
+                    <div className="text-center">
+                        <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-white mx-auto mb-4"></div>
+                        <p className="text-white/70 font-medium">Loading Vision Engine...</p>
+                    </div>
+                </div>
+            )}
         </div>
 
         {/* Controls */}
-        <div className="mt-8 flex gap-6">
+        <div className="mt-10 flex gap-6 items-center">
             <button 
-                onClick={() => {
-                    setIsActive(!isActive);
-                    if(!isActive) setReps(0);
-                }}
-                className={`flex items-center gap-2 px-8 py-4 rounded-full font-bold text-lg transition-all transform hover:scale-105 ${
+                onClick={toggleSession}
+                disabled={!isLoaded}
+                className={`flex items-center gap-3 px-10 py-5 rounded-full font-bold text-lg transition-all transform hover:scale-105 shadow-xl ${
                     isActive 
-                    ? 'bg-red-500/20 text-red-400 border border-red-500/50 hover:bg-red-500/30' 
-                    : 'bg-blue-600 text-white hover:bg-blue-500 shadow-lg shadow-blue-600/20'
-                }`}
+                    ? 'bg-red-500/10 text-red-500 border border-red-500/20 hover:bg-red-500/20' 
+                    : 'bg-white text-black hover:bg-gray-200 shadow-[0_0_20px_rgba(255,255,255,0.2)]'
+                } ${!isLoaded ? 'opacity-50 cursor-not-allowed' : ''}`}
             >
-                {isActive ? <><Pause className="w-6 h-6"/> Stop Session</> : <><Play className="w-6 h-6"/> Start Workout</>}
+                {isActive ? <><Pause className="w-6 h-6"/> STOP SESSION</> : <><Play className="w-6 h-6"/> START WORKOUT</>}
             </button>
             
              <button 
-                onClick={() => setReps(0)}
-                className="p-4 rounded-full bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-white transition-colors"
+                onClick={() => {
+                    const newState = poseLogic.current.resetState(selectedExercise);
+                    setReps(newState.reps);
+                    setFeedback(newState.feedback);
+                }}
+                className="p-5 rounded-full bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white transition-all border border-white/5 hover:border-white/20"
+                title="Reset Reps"
             >
                 <RefreshCw className="w-6 h-6"/>
             </button>
         </div>
 
-        <p className="mt-6 text-gray-500 text-sm max-w-md text-center">
-            Ensure your full body is visible. Currently tracking: <span className="text-gray-300">{EXERCISE_CONFIG[selectedExercise].name}</span>
+        <p className="mt-8 text-gray-500 text-sm max-w-md text-center tracking-wide">
+            Ensure your full body is visible. Currently tracking: <span className="text-white font-medium border-b border-white/20 pb-0.5">{EXERCISE_CONFIG[selectedExercise].name}</span>
         </p>
 
       </div>

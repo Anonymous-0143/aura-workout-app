@@ -56,7 +56,7 @@ const AIChat = () => {
       {!isOpen && (
         <button
           onClick={() => setIsOpen(true)}
-          className="bg-blue-600 hover:bg-blue-700 text-white p-4 rounded-full shadow-lg transition-all duration-300 hover:scale-110 flex items-center justify-center"
+          className="bg-white text-black p-4 rounded-full shadow-[0_0_20px_rgba(255,255,255,0.3)] hover:shadow-[0_0_30px_rgba(255,255,255,0.5)] transition-all duration-300 hover:scale-110 flex items-center justify-center"
         >
           <MessageSquare size={24} />
         </button>
@@ -64,33 +64,33 @@ const AIChat = () => {
 
       {/* Chat Window */}
       {isOpen && (
-        <div className="bg-white dark:bg-gray-900 w-80 sm:w-96 h-[500px] rounded-2xl shadow-2xl flex flex-col border border-gray-200 dark:border-gray-800 overflow-hidden animate-in slide-in-from-bottom-10 fade-in duration-300">
+        <div className="glass-card w-80 sm:w-96 h-[500px] flex flex-col overflow-hidden animate-in slide-in-from-bottom-10 fade-in duration-300 border border-white/20">
           {/* Header */}
-          <div className="bg-blue-600 p-4 flex justify-between items-center text-white">
-            <div className="flex items-center gap-2">
-              <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
-              <h3 className="font-semibold">Aura AI Coach</h3>
+          <div className="bg-white/10 backdrop-blur-md p-4 flex justify-between items-center text-white border-b border-white/10">
+            <div className="flex items-center gap-3">
+              <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse shadow-[0_0_10px_rgba(74,222,128,0.5)]"></div>
+              <h3 className="font-bold tracking-wide">AURA AI</h3>
             </div>
             <button 
               onClick={() => setIsOpen(false)}
-              className="hover:bg-blue-700 p-1 rounded-full transition-colors"
+              className="hover:bg-white/10 p-1 rounded-full transition-colors text-gray-400 hover:text-white"
             >
               <X size={20} />
             </button>
           </div>
 
           {/* Messages */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50 dark:bg-gray-900/50">
+          <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-black/40">
             {messages.map((msg, idx) => (
               <div
                 key={idx}
                 className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
               >
                 <div
-                  className={`max-w-[80%] p-3 rounded-2xl text-sm ${
+                  className={`max-w-[85%] p-3 rounded-2xl text-sm leading-relaxed ${
                     msg.role === 'user'
-                      ? 'bg-blue-600 text-white rounded-br-none'
-                      : 'bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 border border-gray-200 dark:border-gray-700 rounded-bl-none shadow-sm'
+                      ? 'bg-white text-black font-medium rounded-br-none shadow-lg'
+                      : 'bg-white/10 text-gray-200 border border-white/10 rounded-bl-none backdrop-blur-sm'
                   }`}
                 >
                   {msg.content}
@@ -99,8 +99,8 @@ const AIChat = () => {
             ))}
             {isLoading && (
               <div className="flex justify-start">
-                <div className="bg-white dark:bg-gray-800 p-3 rounded-2xl rounded-bl-none border border-gray-200 dark:border-gray-700 shadow-sm">
-                  <Loader2 className="w-5 h-5 animate-spin text-blue-600" />
+                <div className="bg-white/10 p-3 rounded-2xl rounded-bl-none border border-white/10 backdrop-blur-sm">
+                  <Loader2 className="w-5 h-5 animate-spin text-white" />
                 </div>
               </div>
             )}
@@ -108,19 +108,19 @@ const AIChat = () => {
           </div>
 
           {/* Input */}
-          <form onSubmit={handleSubmit} className="p-4 bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-800">
+          <form onSubmit={handleSubmit} className="p-4 bg-black/60 border-t border-white/10 backdrop-blur-md">
             <div className="flex gap-2">
               <input
                 type="text"
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 placeholder="Ask about workouts..."
-                className="flex-1 px-4 py-2 rounded-full bg-gray-100 dark:bg-gray-800 border-none focus:ring-2 focus:ring-blue-500 text-sm dark:text-white"
+                className="flex-1 px-4 py-2 rounded-xl bg-white/5 border border-white/10 focus:border-white/30 focus:bg-white/10 focus:ring-0 text-sm text-white placeholder-gray-500 transition-all"
               />
               <button
                 type="submit"
                 disabled={isLoading || !input.trim()}
-                className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white p-2 rounded-full transition-colors"
+                className="bg-white hover:bg-gray-200 disabled:bg-gray-600 disabled:text-gray-400 text-black p-2 rounded-xl transition-colors shadow-lg"
               >
                 <Send size={18} />
               </button>
